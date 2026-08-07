@@ -1,0 +1,22 @@
+{
+  "log_db": "~/.codex/logs_2.sqlite",
+  "codex_config": "~/.codex/config.toml",
+  "poll_interval_sec": 2,
+  "target_window": {
+    "title_contains": "",
+    "input_point": {
+      "x": null,
+      "y": null,
+      "relative_x": null,
+      "relative_y": null
+    }
+  },
+  "resume_message": "continue",
+  "timing": {
+    "initial_delay_sec": 30,
+    "observe_sec": 30,
+    "max_fast_attempts": 3,
+    "long_retry_sec": 300
+  },
+  "additional_recoverable_patterns": []
+}

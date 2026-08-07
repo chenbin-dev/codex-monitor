@@ -1,0 +1,4 @@
+Pillow==12.3.0
+pystray==0.19.5
+pywin32==312
+pywinauto==0.6.9

@@ -1,0 +1,24 @@
+import unittest
+
+from codex_monitor.classifier import classify
+from codex_monitor.events import LogRecord
+
+
+def record(body: str, target: str = "codex_http_client::client") -> LogRecord:
+    return LogRecord(1, 0, "TRACE", target, body, "thread-1", "process-1")
+
+
+class ClassifierTests(unittest.TestCase):
+    def test_retryable_gateway_error_requires_codex_source(self) -> None:
+        self.assertEqual(classify(record("503 Service Unavailable")).kind, "gateway_503")
+        self.assertEqual(classify(record("503 Service Unavailable", "unrelated::logger")).category, "none")
+
+    def test_terminal_error_never_enters_auto_recovery(self) -> None:
+        result = classify(record("status=401 authentication failed"))
+        self.assertEqual(result.category, "terminal")
+
+    def test_stream_error_extracts_turn_id(self) -> None:
+        result = classify(record('stream disconnected turn_id="turn-123"'))
+        self.assertEqual(result.category, "recoverable")
+        self.assertEqual(result.kind, "stream_disconnected")
+        self.assertEqual(result.turn_id, "turn-123")
