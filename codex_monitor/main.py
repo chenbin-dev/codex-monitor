@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import ctypes
 import sys
 import threading
 from pathlib import Path
 
 from .auto_resume import calibrate_input_box
+from .cli_wrapper import install_cli_wrapper
 from .config import Settings
 from .history import HistoryStore
 from .history_window import show_history_async
+from .recovery import launch_managed_cli
 from .service import MonitorService
 
 
@@ -22,12 +25,26 @@ class TrayApplication:
         self.service = MonitorService(self.settings, self.store)
         self.icon = None
 
-    def _calibrate(self, *_: object) -> None:
+    def _calibrate(self, target_id: str) -> None:
         def worker() -> None:
-            result = calibrate_input_box(self.settings)
-            self.store.record_event(result.outcome, result.detail)
+            result = calibrate_input_box(self.settings, target_id)
+            self.store.record_event(result.outcome, result.detail, target_id=target_id)
 
         threading.Thread(target=worker, name="codex-calibration", daemon=True).start()
+
+    def _launch_cli(self, *_: object) -> None:
+        result = launch_managed_cli()
+        self.store.record_event(result.outcome, result.detail, target_id="cli")
+
+    def _install_cli_wrapper(self, *_: object) -> None:
+        result = install_cli_wrapper(self.settings)
+        self.store.record_event(result.outcome, result.detail, target_id="cli")
+
+    def _simulate_recovery(self, target_id: str) -> None:
+        def worker() -> None:
+            self.service.simulate_recovery(target_id)
+
+        threading.Thread(target=worker, name=f"codex-simulate-{target_id}", daemon=True).start()
 
     def _toggle_pause(self, *_: object) -> None:
         paused = self.service.toggle_pause()
@@ -54,7 +71,14 @@ class TrayApplication:
         draw.rectangle((28, 21, 36, 43), fill=(255, 255, 255, 255))
         menu = pystray.Menu(
             pystray.MenuItem(lambda _: f"状态：{self.service.status_text()}", None, enabled=False),
-            pystray.MenuItem("校准 Codex 输入框", self._calibrate),
+            pystray.MenuItem(lambda _: f"目标：{self.service.target_status_text()}", None, enabled=False),
+            pystray.MenuItem("校准 VS Code Codex 输入框", lambda *_: self._calibrate("vscode")),
+            pystray.MenuItem("校准 Codex 桌面端输入框", lambda *_: self._calibrate("desktop")),
+            pystray.MenuItem("安装全局 Codex CLI 监测", self._install_cli_wrapper),
+            pystray.MenuItem("启动 CLI 快速测试窗口", self._launch_cli),
+            pystray.MenuItem("测试发送 continue 到 VS Code", lambda *_: self._simulate_recovery("vscode")),
+            pystray.MenuItem("测试发送 continue 到桌面端", lambda *_: self._simulate_recovery("desktop")),
+            pystray.MenuItem("测试发送 continue 到 CLI", lambda *_: self._simulate_recovery("cli")),
             pystray.MenuItem("查看历史", self._show_history),
             pystray.MenuItem(lambda _: "恢复监测" if self.service.paused else "暂停监测", self._toggle_pause),
             pystray.Menu.SEPARATOR,
@@ -66,6 +90,17 @@ class TrayApplication:
 
 
 def main() -> int:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ctypes.set_last_error(0)
+    mutex = kernel32.CreateMutexW(None, False, "Local\\CodexMonitorSingleInstance")
+    if not mutex:
+        print("无法创建监测器单实例锁", file=sys.stderr)
+        return 1
+    if ctypes.get_last_error() == 183:
+        # A second instance would read the same log cursor and could send a
+        # duplicate continue, so it must exit before starting any worker.
+        kernel32.CloseHandle(mutex)
+        return 0
     project_dir = Path(__file__).resolve().parent.parent
     app = TrayApplication(project_dir)
     try:
@@ -75,6 +110,8 @@ def main() -> int:
     except Exception as error:
         print(f"启动失败：{error}", file=sys.stderr)
         return 1
+    finally:
+        kernel32.CloseHandle(mutex)
     return 0
 
 

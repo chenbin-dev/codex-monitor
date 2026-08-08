@@ -13,15 +13,42 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "log_db": "~/.codex/logs_2.sqlite",
     "codex_config": "~/.codex/config.toml",
     "poll_interval_sec": 2,
-    "target_window": {
-        "title_contains": "",
-        "input_point": {
-            "x": None,
-            "y": None,
-            "relative_x": None,
-            "relative_y": None,
+    "targets": [
+        {
+            "id": "vscode",
+            "kind": "vscode",
+            "enabled": True,
+            "title_contains": "",
+            "input_point": {
+                "x": None,
+                "y": None,
+                "relative_x": None,
+                "relative_y": None,
+            },
         },
-    },
+        {
+            "id": "desktop",
+            "kind": "desktop",
+            "enabled": True,
+            "protocol_enabled": True,
+            "title_contains": "Codex",
+            "input_point": {
+                "x": None,
+                "y": None,
+                "relative_x": None,
+                "relative_y": None,
+            },
+        },
+        {
+            "id": "cli",
+            "kind": "cli",
+            "enabled": True,
+            "title_contains": "Codex CLI",
+            "allow_blind_terminal_input": True,
+            "protocol_enabled": True,
+            "protocol_endpoint": "ws://127.0.0.1:8765",
+        },
+    ],
     "resume_message": "继续",
     "timing": {
         "initial_delay_sec": 30,
@@ -31,6 +58,34 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "additional_recoverable_patterns": [],
 }
+
+
+def _migrate_legacy_target(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert the original single VS Code calibration to the target list."""
+
+    if isinstance(data.get("targets"), list):
+        normalized = copy.deepcopy(data)
+        defaults = {str(target["id"]): target for target in DEFAULT_CONFIG["targets"]}
+        configured = {
+            str(target.get("id")): target
+            for target in data["targets"]
+            if isinstance(target, dict) and target.get("id")
+        }
+        normalized["targets"] = [
+            _deep_merge(default_target, configured.get(target_id, {}))
+            for target_id, default_target in defaults.items()
+        ]
+        return normalized
+    legacy = data.get("target_window")
+    if not isinstance(legacy, dict):
+        return data
+    migrated = copy.deepcopy(data)
+    targets = copy.deepcopy(DEFAULT_CONFIG["targets"])
+    targets[0]["title_contains"] = str(legacy.get("title_contains") or "")
+    if isinstance(legacy.get("input_point"), dict):
+        targets[0]["input_point"].update(legacy["input_point"])
+    migrated["targets"] = targets
+    return migrated
 
 
 def _deep_merge(defaults: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
@@ -59,11 +114,12 @@ class Settings:
                 loaded = json.load(file)
             if not isinstance(loaded, dict):
                 raise ValueError("config.json 必须是 JSON 对象")
-            data = _deep_merge(DEFAULT_CONFIG, loaded)
+            migrated = _migrate_legacy_target(loaded)
+            data = _deep_merge(DEFAULT_CONFIG, migrated)
         else:
             data = copy.deepcopy(DEFAULT_CONFIG)
         settings = cls(path, data)
-        if not path.exists():
+        if not path.exists() or data != loaded:
             settings.save()
         return settings
 
@@ -85,21 +141,47 @@ class Settings:
 
     @property
     def window_title(self) -> str:
-        return str(self.data["target_window"]["title_contains"]).strip()
+        return str(self.target("vscode")["title_contains"]).strip()
 
     @property
     def is_calibrated(self) -> bool:
-        point = self.data["target_window"]["input_point"]
+        point = self.target("vscode")["input_point"]
         return bool(self.window_title and point.get("relative_x") is not None and point.get("relative_y") is not None)
 
-    def update_calibration(self, title: str, x: int, y: int, rect: tuple[int, int, int, int]) -> None:
+    @property
+    def targets(self) -> list[dict[str, Any]]:
+        return [target for target in self.data["targets"] if isinstance(target, dict)]
+
+    def target(self, target_id: str) -> dict[str, Any]:
+        for target in self.targets:
+            if target.get("id") == target_id:
+                return target
+        raise KeyError(f"未知目标: {target_id}")
+
+    def enabled_targets(self) -> list[dict[str, Any]]:
+        return [target for target in self.targets if bool(target.get("enabled", True))]
+
+    def is_target_calibrated(self, target_id: str) -> bool:
+        target = self.target(target_id)
+        point = target.get("input_point")
+        return bool(
+            target.get("title_contains")
+            and isinstance(point, dict)
+            and point.get("relative_x") is not None
+            and point.get("relative_y") is not None
+        )
+
+    def update_calibration(
+        self, title: str, x: int, y: int, rect: tuple[int, int, int, int], target_id: str = "vscode"
+    ) -> None:
         """将屏幕坐标保存为窗口相对坐标，窗口缩放后仍可定位输入框。"""
 
         left, top, right, bottom = rect
         width, height = right - left, bottom - top
         if width <= 0 or height <= 0:
             raise ValueError("无法读取 VS Code 窗口尺寸")
-        point = self.data["target_window"]["input_point"]
+        target = self.target(target_id)
+        point = target["input_point"]
         point.update(
             {
                 "x": x,
@@ -108,5 +190,5 @@ class Settings:
                 "relative_y": round((y - top) / height, 6),
             }
         )
-        self.data["target_window"]["title_contains"] = title
+        target["title_contains"] = title
         self.save()

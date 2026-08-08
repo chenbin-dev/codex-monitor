@@ -50,7 +50,8 @@ class HistoryStore:
                     detail TEXT NOT NULL,
                     thread_id TEXT,
                     process_uuid TEXT,
-                    log_id INTEGER
+                    log_id INTEGER,
+                    target_id TEXT
                 );
                 CREATE TABLE IF NOT EXISTS incidents (
                     incident_id TEXT PRIMARY KEY,
@@ -63,12 +64,23 @@ class HistoryStore:
                     last_error_id INTEGER NOT NULL,
                     next_action_at REAL,
                     created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
+                    updated_at REAL NOT NULL,
+                    target_id TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_incidents_due
                     ON incidents(phase, next_action_at);
                 """
             )
+            self._ensure_column(connection, "events", "target_id", "TEXT")
+            self._ensure_column(connection, "incidents", "target_id", "TEXT")
+
+    @staticmethod
+    def _ensure_column(connection: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        """Apply additive schema updates without invalidating existing history.db files."""
+
+        columns = {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def get_cursor(self) -> int | None:
         with self._connect() as connection:
@@ -91,14 +103,15 @@ class HistoryStore:
         thread_id: str | None = None,
         process_uuid: str | None = None,
         log_id: int | None = None,
+        target_id: str | None = None,
     ) -> None:
         """只保留分类摘要，避免将 Codex 日志正文和敏感提示词复制到历史库。"""
 
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO events(created_at, event_type, detail, thread_id, process_uuid, log_id) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (time.time(), event_type, detail, thread_id, process_uuid, log_id),
+                "INSERT INTO events(created_at, event_type, detail, thread_id, process_uuid, log_id, target_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), event_type, detail, thread_id, process_uuid, log_id, target_id),
             )
 
     @staticmethod
@@ -126,6 +139,7 @@ class HistoryStore:
         error_kind: str,
         log_id: int,
         initial_delay_sec: int,
+        target_id: str | None = None,
     ) -> str:
         """同一会话的新错误会重置静默等待窗口，避免抢在 Codex 自重试前发送。"""
 
@@ -139,17 +153,17 @@ class HistoryStore:
                 incident_id = existing["incident_id"]
                 connection.execute(
                     "UPDATE incidents SET error_kind = ?, last_error_id = ?, phase = 'waiting', "
-                    "next_action_at = ?, updated_at = ? WHERE incident_id = ?",
-                    (error_kind, log_id, now + initial_delay_sec, now, incident_id),
+                    "next_action_at = ?, updated_at = ?, target_id = ? WHERE incident_id = ?",
+                    (error_kind, log_id, now + initial_delay_sec, now, target_id, incident_id),
                 )
                 return str(incident_id)
 
             incident_id = self._incident_id(process_uuid, thread_id, turn_id, log_id)
             connection.execute(
                 "INSERT INTO incidents(incident_id, process_uuid, thread_id, turn_id, error_kind, phase, "
-                "attempts, last_error_id, next_action_at, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 'waiting', 0, ?, ?, ?, ?)",
-                (incident_id, process_uuid, thread_id, turn_id, error_kind, log_id, now + initial_delay_sec, now, now),
+                "attempts, last_error_id, next_action_at, created_at, updated_at, target_id) "
+                "VALUES (?, ?, ?, ?, ?, 'waiting', 0, ?, ?, ?, ?, ?)",
+                (incident_id, process_uuid, thread_id, turn_id, error_kind, log_id, now + initial_delay_sec, now, now, target_id),
             )
             return incident_id
 
@@ -244,19 +258,25 @@ class HistoryStore:
         now = time.time()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT thread_id, process_uuid FROM incidents WHERE incident_id = ?", (incident_id,)
+                "SELECT thread_id, process_uuid, target_id FROM incidents WHERE incident_id = ?", (incident_id,)
             ).fetchone()
             connection.execute(
                 "UPDATE incidents SET phase = 'skipped', next_action_at = NULL, updated_at = ? WHERE incident_id = ?",
                 (now, incident_id),
             )
         if row:
-            self.record_event("skipped", detail, thread_id=row["thread_id"], process_uuid=row["process_uuid"])
+            self.record_event(
+                "skipped",
+                detail,
+                thread_id=row["thread_id"],
+                process_uuid=row["process_uuid"],
+                target_id=row["target_id"],
+            )
 
     def recent_events(self, limit: int = 80) -> Iterable[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT created_at, event_type, detail, thread_id, process_uuid, log_id "
+            "SELECT created_at, event_type, detail, thread_id, process_uuid, log_id, target_id "
                 "FROM events ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()

@@ -22,3 +22,7 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(result.category, "recoverable")
         self.assertEqual(result.kind, "stream_disconnected")
         self.assertEqual(result.turn_id, "turn-123")
+
+    def test_app_server_and_sse_sources_are_recoverable(self) -> None:
+        self.assertEqual(classify(record("503 Service Unavailable", "codex_api::sse::responses")).category, "recoverable")
+        self.assertEqual(classify(record("timeout", "codex_app_server::message_processor")).category, "recoverable")

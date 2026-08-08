@@ -128,7 +128,7 @@ class WindowLocator:
     """只匹配用户校准过的唯一 VS Code 工作区窗口。"""
 
     @staticmethod
-    def find(title_contains: str) -> TargetWindow | None:
+    def find(title_contains: str, fallback_title: str | None = "Visual Studio Code") -> TargetWindow | None:
         try:
             import win32gui
         except ImportError:
@@ -143,7 +143,7 @@ class WindowLocator:
                 matches.append(TargetWindow(handle, title, tuple(win32gui.GetWindowRect(handle))))
 
         win32gui.EnumWindows(visitor, None)
-        if not matches:
+        if not matches and fallback_title:
             # Workspace names change after renaming or reopening a folder. If
             # the configured title is stale, accept one unambiguous VS Code
             # window rather than guessing among multiple editor windows.
@@ -154,7 +154,7 @@ class WindowLocator:
                 if (
                     win32gui.IsWindowVisible(handle)
                     and title
-                    and "visual studio code" in title.lower()
+                    and fallback_title.lower() in title.lower()
                 ):
                     fallback.append(TargetWindow(handle, title, tuple(win32gui.GetWindowRect(handle))))
 
@@ -201,8 +201,8 @@ class WindowLocator:
                     pass
 
 
-def _relative_point(settings: Settings, target: TargetWindow) -> tuple[int, int]:
-    point = settings.data["target_window"]["input_point"]
+def _relative_point(settings: Settings, target: TargetWindow, target_id: str) -> tuple[int, int]:
+    point = settings.target(target_id)["input_point"]
     left, top, right, bottom = target.rect
     return (
         round(left + (right - left) * float(point["relative_x"])),
@@ -235,6 +235,10 @@ def _find_codex_input(target: TargetWindow) -> tuple[tuple[int, int], str] | Non
             for element in window.descendants(control_type="Edit")
             if "ProseMirror" in str(element.element_info.class_name)
         ]
+        if not editors:
+            # The Desktop application can expose the composer as a regular
+            # Edit control instead of ProseMirror after an Electron update.
+            editors = list(window.descendants(control_type="Edit"))
         if not editors:
             return None
         # The compose editor is the lowest ProseMirror editor in the sidebar.
@@ -282,29 +286,37 @@ def _read_input_value(x: int, y: int) -> str | None:
 
 
 class AutoResumer:
-    """只有已校准、唯一窗口且已确认输入框为空时才会提交恢复文案。"""
+    """Run UI recovery for one calibrated VS Code or Desktop target."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, target_id: str = "vscode") -> None:
         self.settings = settings
+        self.target_id = target_id
+
+    @property
+    def target_kind(self) -> str:
+        return str(self.settings.target(self.target_id).get("kind", "vscode"))
 
     def attempt(self) -> AutoResumeResult:
-        if not self.settings.is_calibrated:
+        if not self.settings.is_target_calibrated(self.target_id):
             return AutoResumeResult("skipped", "未完成输入框校准")
-        target = WindowLocator.find(self.settings.window_title)
+        target_config = self.settings.target(self.target_id)
+        fallback = "Visual Studio Code" if self.target_kind == "vscode" else None
+        target = WindowLocator.find(str(target_config["title_contains"]), fallback)
         if not target:
-            return AutoResumeResult("skipped", "未找到唯一的目标 VS Code 窗口")
+            return AutoResumeResult("skipped", "未找到唯一的目标窗口")
         if not WindowLocator.activate(target):
-            return AutoResumeResult("skipped", "目标 VS Code 窗口不可操作")
+            return AutoResumeResult("skipped", "目标窗口不可操作")
         try:
-            _open_codex_sidebar()
+            if self.target_kind == "vscode":
+                _open_codex_sidebar()
             # Opening the sidebar can change the UI tree. Re-fetch both the
             # window rectangle and the actual compose editor before clicking.
-            target = WindowLocator.find(self.settings.window_title) or target
+            target = WindowLocator.find(str(target_config["title_contains"]), fallback) or target
             input_box = _find_codex_input(target)
             if input_box:
                 point, draft = input_box
             else:
-                point = _relative_point(self.settings, target)
+                point = _relative_point(self.settings, target, self.target_id)
                 draft = _read_input_value(*point)
             if draft is None:
                 return AutoResumeResult("skipped", "无法安全读取 Codex 输入框")
@@ -321,7 +333,7 @@ class AutoResumer:
             return AutoResumeResult("skipped", f"自动恢复未派发：{type(error).__name__}")
 
 
-def calibrate_input_box(settings: Settings) -> AutoResumeResult:
+def calibrate_input_box(settings: Settings, target_id: str = "vscode") -> AutoResumeResult:
     """等待用户下一次鼠标左键释放，将该位置保存为固定工作区的输入框坐标。"""
 
     try:
@@ -347,9 +359,11 @@ def calibrate_input_box(settings: Settings) -> AutoResumeResult:
             x, y = win32api.GetCursorPos()
             handle = win32gui.GetAncestor(win32gui.WindowFromPoint((x, y)), GA_ROOT)
             title = win32gui.GetWindowText(handle)
-            if "visual studio code" not in title.lower():
+            if target_id == "vscode" and "visual studio code" not in title.lower():
                 return AutoResumeResult("skipped", "校准点不属于 VS Code 窗口")
-            settings.update_calibration(title, x, y, tuple(win32gui.GetWindowRect(handle)))
+            if target_id == "desktop" and "codex" not in title.lower() and "chatgpt" not in title.lower():
+                return AutoResumeResult("skipped", "校准点不属于 Codex 桌面端窗口")
+            settings.update_calibration(title, x, y, tuple(win32gui.GetWindowRect(handle)), target_id)
             return AutoResumeResult("calibrated", "输入框位置已保存")
         time.sleep(0.05)
     return AutoResumeResult("skipped", "校准超时")

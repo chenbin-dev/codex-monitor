@@ -2,15 +2,42 @@
   "log_db": "~/.codex/logs_2.sqlite",
   "codex_config": "~/.codex/config.toml",
   "poll_interval_sec": 2,
-  "target_window": {
-    "title_contains": "",
-    "input_point": {
-      "x": null,
-      "y": null,
-      "relative_x": null,
-      "relative_y": null
+  "targets": [
+    {
+      "id": "vscode",
+      "kind": "vscode",
+      "enabled": true,
+      "title_contains": "",
+      "input_point": {
+        "x": null,
+        "y": null,
+        "relative_x": null,
+        "relative_y": null
+      }
+    },
+    {
+      "id": "desktop",
+      "kind": "desktop",
+      "enabled": true,
+      "protocol_enabled": true,
+      "title_contains": "Codex",
+      "input_point": {
+        "x": null,
+        "y": null,
+        "relative_x": null,
+        "relative_y": null
+      }
+    },
+    {
+      "id": "cli",
+      "kind": "cli",
+      "enabled": true,
+      "title_contains": "Codex CLI",
+      "allow_blind_terminal_input": true,
+      "protocol_enabled": true,
+      "protocol_endpoint": "ws://127.0.0.1:8765"
     }
-  },
+  ],
   "resume_message": "continue",
   "timing": {
     "initial_delay_sec": 30,

@@ -18,6 +18,9 @@ SOURCE_MARKERS = (
     "codex_core::responses",
     "codex_core::session::turn",
     "codex_core::stream",
+    "codex_api::sse::responses",
+    "codex_app_server::",
+    "codex_app_server_transport::",
 )
 
 
