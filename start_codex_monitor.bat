@@ -14,12 +14,17 @@ if not exist "%PYTHON_EXE%" (
 )
 
 cd /d "%PROJECT_DIR%"
+echo.
+echo [STARTING] Launching Codex Monitor...
+echo [INFO] Find Codex Monitor in the Windows system tray after startup.
+echo [INFO] Keep this window open or minimize it. Closing it stops monitoring.
+echo.
 "%PYTHON_EXE%" -m codex_monitor
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
     echo.
-    echo Program exited with error code: %EXIT_CODE%
+    echo [FAILED] Monitor stopped. Error code: %EXIT_CODE%
     pause
 )
 

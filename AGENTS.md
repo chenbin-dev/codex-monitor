@@ -9,8 +9,8 @@
 - `tests/`：不依赖真实 Codex 服务的标准库单元测试。
 - `config.example.json`：无密钥的多目标配置模板；运行时生成的 `config.json` 被 Git 忽略。
 - `history.db`：游标、恢复状态与目标摘要，被 Git 忽略。
-- `start_codex_monitor.bat`：启动托盘监测器。
-- `install_codex_cli_monitor.bat`：安装全局 CLI 监测；新终端可在任意目录照常使用 `codex`。
+- `start_codex_monitor.bat`：启动托盘监测器，并在控制台显示启动状态；窗口关闭会结束监测，可最小化。
+- `install_codex_cli_monitor.bat`：安装全局 CLI 监测；双击会保留结果窗口并显示转发器位置，新终端可在任意目录照常使用 `codex`。
 - `start_managed_codex_cli.bat`：打开用于快速验证的 CLI 终端；它以独立参数启动转发器，避免 Windows `cmd` 错误解析带引号路径。
 
 ## 当前状态

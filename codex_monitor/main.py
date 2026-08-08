@@ -86,6 +86,7 @@ class TrayApplication:
         )
         self.icon = pystray.Icon("codex_monitor", image, "Codex 健康监测", menu)
         self.service.start()
+        print("Codex 健康监测已启动，正在读取本地日志；请在系统托盘中操作。", flush=True)
         self.icon.run()
 
 
@@ -99,6 +100,7 @@ def main() -> int:
     if ctypes.get_last_error() == 183:
         # A second instance would read the same log cursor and could send a
         # duplicate continue, so it must exit before starting any worker.
+        print("Codex 健康监测已在运行，请在系统托盘中查看。", flush=True)
         kernel32.CloseHandle(mutex)
         return 0
     project_dir = Path(__file__).resolve().parent.parent
