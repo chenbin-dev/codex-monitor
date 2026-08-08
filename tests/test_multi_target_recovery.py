@@ -62,6 +62,14 @@ class MultiTargetRecoveryTests(unittest.TestCase):
             only_cli = RecoveryRegistry(settings, {"cli": StubAdapter(True), "vscode": StubAdapter(True)})
             self.assertEqual(only_cli.select(LogRecord(1, 0, "ERROR", "codex_core::responses_retry", "503 Service Unavailable", None, "process")), "cli")
 
+    def test_cli_process_uuid_prefers_cli_target_for_shared_transport_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings = self.settings(Path(directory))
+            cli = CliAdapter(settings, lambda: [CliProcess(34740, "codex.exe")])
+            registry = RecoveryRegistry(settings, {"cli": cli, "vscode": StubAdapter(True)})
+            shared_transport = LogRecord(1, 0, "ERROR", "codex_http_client::transport", "502 Bad Gateway", None, "pid:34740:session")
+            self.assertEqual(registry.select(shared_transport), "cli")
+
     def test_cli_never_dispatches_when_multiple_processes_exist(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             settings = self.settings(Path(directory))

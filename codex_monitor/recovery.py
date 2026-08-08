@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -282,6 +283,17 @@ class CliAdapter:
         processes = self._process_provider()
         return processes[0] if len(processes) == 1 else None
 
+    def owns_process(self, process_uuid: str | None) -> bool:
+        """Match a shared-log record to a live CLI PID when available."""
+
+        if not process_uuid:
+            return False
+        match = re.search(r"(?:^|:)pid:(\d+)(?::|$)", process_uuid, re.IGNORECASE)
+        if not match:
+            return False
+        pid = int(match.group(1))
+        return any(process.pid == pid for process in self._process_provider())
+
     def is_available(self) -> bool:
         if not bool(self.settings.target(self.target_id).get("enabled", True)):
             return False
@@ -344,10 +356,11 @@ class RecoveryRegistry:
     def select(self, record: LogRecord) -> str | None:
         # CLI retry events have a distinct source. Prefer the CLI adapter so a
         # VS Code plugin calibration cannot steal an integrated-terminal error.
-        if "codex_core::responses_retry" in record.target.lower():
-            cli = self.adapters.get("cli")
-            if cli and cli.is_available():
-                return "cli"
+        cli = self.adapters.get("cli")
+        if cli and "codex_core::responses_retry" in record.target.lower() and cli.is_available():
+            return "cli"
+        if isinstance(cli, CliAdapter) and cli.owns_process(record.process_uuid):
+            return "cli"
         available = [target_id for target_id, adapter in self.adapters.items() if adapter.is_available()]
         return available[0] if len(available) == 1 else None
 
