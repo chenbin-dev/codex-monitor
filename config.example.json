@@ -34,6 +34,7 @@
       "enabled": true,
       "title_contains": "Codex CLI",
       "allow_blind_terminal_input": true,
+      "allow_vscode_terminal_input": true,
       "protocol_enabled": true,
       "protocol_endpoint": "ws://127.0.0.1:8765"
     }

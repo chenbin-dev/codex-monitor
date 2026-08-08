@@ -103,6 +103,24 @@ def _find_terminal_window(title_contains: str) -> TargetWindow | None:
     return None
 
 
+def _find_vscode_window(settings: Settings) -> TargetWindow | None:
+    """Find the VS Code host window used by an integrated terminal."""
+
+    target = settings.target("vscode")
+    return WindowLocator.find(str(target.get("title_contains") or ""), "Visual Studio Code")
+
+
+def _is_foreground_window(target: TargetWindow) -> bool:
+    """Only use the integrated-terminal fallback while VS Code is foreground."""
+
+    try:
+        import win32gui
+
+        return win32gui.GetForegroundWindow() == target.handle
+    except ImportError:
+        return False
+
+
 class UIAdapter:
     """The calibrated UI path shared by VS Code and the Desktop application."""
 
@@ -272,7 +290,11 @@ class CliAdapter:
         if not self._single_process():
             return False
         title = str(self.settings.target(self.target_id).get("title_contains") or "")
-        return _find_terminal_window(title) is not None
+        if _find_terminal_window(title) is not None:
+            return True
+        if bool(self.settings.target(self.target_id).get("allow_vscode_terminal_input", True)):
+            return _find_vscode_window(self.settings) is not None
+        return False
 
     def attempt(self, thread_id: str | None = None) -> AutoResumeResult:
         if thread_id and self.bridge:
@@ -285,8 +307,14 @@ class CliAdapter:
             return AutoResumeResult("skipped", "未找到唯一的交互式 Codex CLI 进程")
         title = str(self.settings.target(self.target_id).get("title_contains") or "")
         terminal = _find_terminal_window(title)
+        integrated = False
+        if not terminal and bool(self.settings.target(self.target_id).get("allow_vscode_terminal_input", True)):
+            terminal = _find_vscode_window(self.settings)
+            integrated = terminal is not None
         if not terminal:
             return AutoResumeResult("skipped", "未找到唯一的 Codex CLI 终端窗口")
+        if integrated and not _is_foreground_window(terminal):
+            return AutoResumeResult("skipped", "VS Code 不是当前活动窗口，未向集成终端输入")
         if not WindowLocator.activate(terminal):
             return AutoResumeResult("skipped", "Codex CLI 终端窗口不可操作")
         try:
@@ -314,7 +342,12 @@ class RecoveryRegistry:
         }
 
     def select(self, record: LogRecord) -> str | None:
-        del record  # The shared log currently has no stable terminal-window identifier.
+        # CLI retry events have a distinct source. Prefer the CLI adapter so a
+        # VS Code plugin calibration cannot steal an integrated-terminal error.
+        if "codex_core::responses_retry" in record.target.lower():
+            cli = self.adapters.get("cli")
+            if cli and cli.is_available():
+                return "cli"
         available = [target_id for target_id, adapter in self.adapters.items() if adapter.is_available()]
         return available[0] if len(available) == 1 else None
 

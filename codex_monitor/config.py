@@ -45,6 +45,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "enabled": True,
             "title_contains": "Codex CLI",
             "allow_blind_terminal_input": True,
+            "allow_vscode_terminal_input": True,
             "protocol_enabled": True,
             "protocol_endpoint": "ws://127.0.0.1:8765",
         },

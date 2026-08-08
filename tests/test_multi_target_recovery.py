@@ -56,6 +56,12 @@ class MultiTargetRecoveryTests(unittest.TestCase):
             ambiguous = RecoveryRegistry(settings, {"cli": StubAdapter(True), "vscode": StubAdapter(True)})
             self.assertIsNone(ambiguous.select(record()))
 
+    def test_cli_retry_source_prefers_cli_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings = self.settings(Path(directory))
+            only_cli = RecoveryRegistry(settings, {"cli": StubAdapter(True), "vscode": StubAdapter(True)})
+            self.assertEqual(only_cli.select(LogRecord(1, 0, "ERROR", "codex_core::responses_retry", "503 Service Unavailable", None, "process")), "cli")
+
     def test_cli_never_dispatches_when_multiple_processes_exist(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             settings = self.settings(Path(directory))

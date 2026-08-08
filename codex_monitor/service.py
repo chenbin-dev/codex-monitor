@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 
-from .classifier import classify
+from .classifier import classify, extract_thread_id
 from .cli_protocol import CliProtocolBridge
 from .config import Settings
 from .history import HistoryStore
@@ -76,7 +76,9 @@ class MonitorService:
     def _handle_record(self, record: object) -> None:
         classification = classify(record, self.settings.data["additional_recoverable_patterns"])
         process_uuid = getattr(record, "process_uuid")
-        thread_id = getattr(record, "thread_id")
+        # CLI retry rows in recent Codex versions leave the database column
+        # empty but include `thread.id=...` in the trusted log body.
+        thread_id = getattr(record, "thread_id") or extract_thread_id(getattr(record, "body", ""))
         if classification.category == "success":
             self.store.resolve_thread(process_uuid, thread_id, "同线程出现完成日志")
             return

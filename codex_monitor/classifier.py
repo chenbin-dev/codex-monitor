@@ -12,10 +12,19 @@ TURN_ID_PATTERNS = (
     re.compile(r'"turn_id"\s*:\s*"([A-Za-z0-9_-]+)"', re.IGNORECASE),
 )
 
+THREAD_ID_PATTERNS = (
+    re.compile(r'\bthread_id[=:]\s*["\']?([A-Za-z0-9_-]+)', re.IGNORECASE),
+    re.compile(r'\bthread\.id[=:]\s*["\']?([A-Za-z0-9_-]+)', re.IGNORECASE),
+    re.compile(r'"thread_id"\s*:\s*"([A-Za-z0-9_-]+)"', re.IGNORECASE),
+)
+
 SOURCE_MARKERS = (
     "codex_http_client",
     "codex_api",
     "codex_core::responses",
+    # Newer CLI builds record the failed retry in this target instead of
+    # `codex_core::responses`; keep it in the same transport trust boundary.
+    "codex_core::responses_retry",
     "codex_core::session::turn",
     "codex_core::stream",
     "codex_api::sse::responses",
@@ -26,6 +35,16 @@ SOURCE_MARKERS = (
 
 def extract_turn_id(body: str) -> str | None:
     for pattern in TURN_ID_PATTERNS:
+        match = pattern.search(body)
+        if match:
+            return match.group(1)
+    return None
+
+
+def extract_thread_id(body: str) -> str | None:
+    """Extract a CLI thread identifier when the log row omitted its column."""
+
+    for pattern in THREAD_ID_PATTERNS:
         match = pattern.search(body)
         if match:
             return match.group(1)

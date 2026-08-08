@@ -1,6 +1,6 @@
 import unittest
 
-from codex_monitor.classifier import classify
+from codex_monitor.classifier import classify, extract_thread_id
 from codex_monitor.events import LogRecord
 
 
@@ -26,3 +26,17 @@ class ClassifierTests(unittest.TestCase):
     def test_app_server_and_sse_sources_are_recoverable(self) -> None:
         self.assertEqual(classify(record("503 Service Unavailable", "codex_api::sse::responses")).category, "recoverable")
         self.assertEqual(classify(record("timeout", "codex_app_server::message_processor")).category, "recoverable")
+
+    def test_cli_retry_log_with_503_is_recoverable(self) -> None:
+        result = classify(
+            record(
+                "stream disconnected - retrying sampling request "
+                "unexpected status 503 Service Unavailable",
+                "codex_core::responses_retry",
+            )
+        )
+        self.assertEqual(result.category, "recoverable")
+        self.assertEqual(result.kind, "gateway_503")
+
+    def test_cli_retry_log_extracts_thread_id_from_body(self) -> None:
+        self.assertEqual(extract_thread_id("thread.id=019abc123 stream disconnected"), "019abc123")
