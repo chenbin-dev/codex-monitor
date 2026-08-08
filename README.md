@@ -32,7 +32,7 @@
 
 - `start_managed_codex_cli.bat`
 
-  打开一个用于验证的 Codex CLI 窗口。这个脚本主要用于测试，不是日常必须步骤。
+  打开一个用于验证的 Codex CLI 窗口。这个脚本主要用于测试，不是日常必须步骤。若曾运行旧版本脚本并看到“`codex.cmd` 不是内部或外部命令”，重新运行一次 `install_codex_cli_monitor.bat` 后再使用它。
 
 ## 安装依赖
 
@@ -142,4 +142,3 @@ websocket-client
 ```powershell
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
-

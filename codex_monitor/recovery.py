@@ -337,9 +337,12 @@ def launch_managed_cli() -> AutoResumeResult:
 
     try:
         wrapper = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CodexMonitor" / "bin" / "codex.cmd"
-        command = f'title Codex CLI - Monitor quick test & call "{wrapper}"' if wrapper.exists() else "title Codex CLI - Monitor quick test & codex"
+        # Pass the batch file as its own argument.  Combining `call "..."`
+        # into one argument makes Python escape its quotes as `\"` on Windows,
+        # which cmd.exe then treats as literal characters instead of a path.
+        command = str(wrapper) if wrapper.exists() else "codex"
         subprocess.Popen(
-            ["cmd.exe", "/k", command],
+            ["cmd.exe", "/d", "/k", command],
             cwd=str(Path.home()),
             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
         )

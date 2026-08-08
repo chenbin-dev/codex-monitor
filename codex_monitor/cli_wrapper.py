@@ -42,7 +42,7 @@ def install_cli_wrapper(settings: Settings) -> AutoResumeResult:
         return AutoResumeResult("skipped", "CLI 协议地址格式错误，未安装全局 CLI 监测")
     directory.mkdir(parents=True, exist_ok=True)
     wrapper_path.write_text(
-        "\r\n".join(
+        "\n".join(
             [
                 "@echo off",
                 "setlocal",
@@ -60,6 +60,7 @@ def install_cli_wrapper(settings: Settings) -> AutoResumeResult:
             ]
         ),
         encoding="utf-8",
+        newline="\r\n",
     )
     try:
         import winreg

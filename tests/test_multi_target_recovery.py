@@ -8,7 +8,7 @@ from codex_monitor.config import Settings
 from codex_monitor.events import AutoResumeResult, LogRecord
 from codex_monitor.history import HistoryStore
 from codex_monitor.cli_protocol import _recoverable_kind
-from codex_monitor.recovery import CliAdapter, CliProcess, DesktopAdapter, RecoveryRegistry
+from codex_monitor.recovery import CliAdapter, CliProcess, DesktopAdapter, RecoveryRegistry, launch_managed_cli
 from codex_monitor.service import MonitorService
 
 
@@ -163,6 +163,18 @@ class MultiTargetRecoveryTests(unittest.TestCase):
             registry.attempt.assert_called_once_with("desktop")
             event = next(item for item in store.recent_events() if item["event_type"] == "simulation_recovery")
             self.assertEqual(event["target_id"], "desktop")
+
+    @patch("codex_monitor.recovery.subprocess.Popen")
+    @patch("codex_monitor.recovery.Path.home")
+    @patch("codex_monitor.recovery.Path.exists", return_value=True)
+    def test_managed_cli_passes_wrapper_as_a_separate_cmd_argument(self, _exists: Mock, home: Mock, popen: Mock) -> None:
+        home.return_value = Path("C:/Users/tester")
+        with patch.dict("os.environ", {"LOCALAPPDATA": "C:/Users/tester/AppData/Local"}):
+            result = launch_managed_cli()
+        self.assertEqual(result.outcome, "launched")
+        command = popen.call_args.args[0]
+        self.assertEqual(command[:3], ["cmd.exe", "/d", "/k"])
+        self.assertEqual(command[3], str(Path("C:/Users/tester/AppData/Local/CodexMonitor/bin/codex.cmd")))
 
 
 if __name__ == "__main__":
