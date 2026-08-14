@@ -18,7 +18,8 @@ def _wrapper_directory() -> Path:
 def _find_original_command(wrapper_path: Path) -> str | None:
     """Find the currently installed Codex command without selecting our wrapper."""
 
-    candidates = [shutil.which("codex.cmd"), shutil.which("codex.ps1"), shutil.which("codex.exe")]
+    # `codex.cmd` 可能已经是本工具的转发器，排除后优先内置可执行文件。
+    candidates = [shutil.which("codex.exe"), shutil.which("codex.ps1"), shutil.which("codex.cmd")]
     for candidate in candidates:
         if candidate and Path(candidate).resolve() != wrapper_path.resolve():
             return str(Path(candidate).resolve())

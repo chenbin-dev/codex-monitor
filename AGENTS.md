@@ -19,6 +19,7 @@
 - 恢复目标为 `vscode`、`desktop`、`cli`。只有异常可唯一关联到可用目标时，才会自动发送 `continue`。
 - VS Code 和桌面端需要分别校准；桌面端会优先通过本机 app-server 恢复指定线程，协议失败才使用 UI Automation 兜底。
 - 全局 CLI 监测通过 app-server 的 `threadId` 将异常和终端会话对应；多个已安装监测的 CLI 可以并行工作且只恢复报错会话。新版 CLI 的 `codex_core::responses_retry` 日志也会被识别；VS Code 集成终端在前台时可作为 CLI 的 UI 兜底目标。
+- VS Code 扩展升级可能改变内置 `codex.exe` 的目录。启动时会验证配置路径，失效后自动发现当前命令；CLI 协议不可用不会阻止 VS Code、桌面端日志监测启动。
 - 未通过转发器启动的 CLI 自动发现会排除 VS Code 的 app-server 子进程；多会话或终端窗口不唯一时只记录历史。
 - 托盘的“测试发送 continue”使用与真实异常相同的目标适配器，可在真实 503 前验证输入路径。
 - 不调用中转 API，不读取或保存 API Key、认证文件、提示词和原始日志正文。

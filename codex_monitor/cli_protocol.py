@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from .config import Settings
@@ -55,7 +56,7 @@ class CliProtocolBridge:
         self.enabled = bool(target.get("protocol_enabled", True))
         # Never start the local server through the public `codex` wrapper:
         # doing so would make the server try to connect back to itself.
-        self._codex_command = str(target.get("app_server_command") or shutil.which("codex.exe") or target.get("original_command") or "codex")
+        self._codex_command = self._resolve_app_server_command(target)
         self._server: subprocess.Popen[str] | None = None
         self._socket: Any = None
         self._receiver: threading.Thread | None = None
@@ -64,6 +65,21 @@ class CliProtocolBridge:
         self._request_ids = itertools.count(1)
         self._pending: dict[int, queue.Queue[dict[str, Any]]] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _resolve_app_server_command(target: dict[str, Any]) -> str:
+        """优先使用存在的命令，避免扩展升级后旧路径阻止监测器启动。"""
+
+        configured = str(target.get("app_server_command") or "").strip()
+        if configured and Path(configured).is_file():
+            return configured
+        discovered = shutil.which("codex.exe")
+        if discovered:
+            return discovered
+        original = str(target.get("original_command") or "").strip()
+        if original and Path(original).is_file():
+            return original
+        return "codex"
 
     def is_available(self) -> bool:
         """Return whether the monitor has an active protocol connection."""
@@ -82,14 +98,18 @@ class CliProtocolBridge:
         self._stop.clear()
         if self._connect(websocket):
             return
-        self._server = subprocess.Popen(
-            [self._codex_command, "app-server", "--listen", self.endpoint],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        try:
+            self._server = subprocess.Popen(
+                [self._codex_command, "app-server", "--listen", self.endpoint],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError:
+            # CLI 协议仅是可选能力，不能阻止 VS Code/桌面端监测启动。
+            return
         deadline = time.monotonic() + 8
         while time.monotonic() < deadline and self._server.poll() is None:
             if self._connect(websocket):

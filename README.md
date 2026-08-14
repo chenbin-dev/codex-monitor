@@ -137,6 +137,11 @@ websocket-client
 它的作用是把系统里原本的 `codex` 命令接管一下，然后在监测器在线时自动加上远程连接参数。  
 它不会改变你的项目目录，只是让你在任何目录里输入 `codex` 都能被这套工具接住。
 
+### 4. 启动时提示“系统找不到指定的文件”是什么？
+
+通常是 VS Code 自动升级后，内置的 `codex.exe` 目录变化了，而旧版 `config.json` 还保存着旧目录。
+新版监测器会自动寻找当前可用的 `codex.exe`；随后运行一次 `install_codex_cli_monitor.bat`，即可把全局 CLI 转发器也更新到新位置。
+
 ## 测试
 
 ```powershell
